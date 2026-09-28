@@ -1,0 +1,22 @@
+{
+  "name": "polymarket-readonly",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pm:readonly": "NODE_USE_ENV_PROXY=1 node src/tools/polymarket_readonly.mjs",
+    "pm:readonly:10": "NODE_USE_ENV_PROXY=1 node src/tools/polymarket_readonly.mjs --limit 10",
+    "pm:finder": "NODE_USE_ENV_PROXY=1 node src/tools/polymarket_market_finder.mjs",
+    "pm:tracker": "NODE_USE_ENV_PROXY=1 node src/tools/polymarket_price_tracker.mjs",
+    "pm:strategy-screen": "NODE_USE_ENV_PROXY=1 node src/tools/polymarket_strategy_screen_collector.mjs",
+    "pm:strategy-report": "node src/tools/polymarket_strategy_screen_report.mjs",
+    "pm:historical-screen": "node src/tools/polymarket_historical_strategy_screen.mjs",
+    "pm:raw-strategy-report": "node src/tools/polymarket_raw_strategy_screen_report.mjs",
+    "pm:build": "node src/tools/polymarket_build_dataset.mjs",
+    "pm:replay": "node src/tools/polymarket_replay_paper.mjs",
+    "pm:metrics": "node src/tools/polymarket_metrics_report.mjs"
+  },
+  "dependencies": {
+    "https-proxy-agent": "^7.0.6"
+  }
+}

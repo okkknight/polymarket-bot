@@ -1,0 +1,51 @@
+# ============================================
+# Secrets & Credentials
+# ============================================
+.env*
+!.env.live.template
+*.local
+*.pem
+*.key
+*.crt
+credentials.json
+*_creds*.json
+*_api_creds*.json
+live_api_creds.local.json
+
+# ============================================
+# Dependencies
+# ============================================
+node_modules/
+.venv/
+.venv-*/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# ============================================
+# Data & Logs
+# ============================================
+data/
+logs/
+tmp/
+runs/
+*.log
+
+# ============================================
+# IDE & OS
+# ============================================
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ============================================
+# Build Outputs
+# ============================================
+dist/
+build/
+*.egg-info/

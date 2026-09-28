@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polymarket Bot Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; background: #1a1a2e; color: #eee; padding: 20px; }
+    h1 { color: #00d4ff; margin-bottom: 15px; }
+    h2 { color: #00d4ff; margin: 20px 0 10px; font-size: 1.1rem; }
+    .container { max-width: 1600px; margin: 0 auto; }
+    
+    /* Alerts */
+    .alert { padding: 12px 16px; border-radius: 6px; margin: 8px 0; font-weight: bold; font-size: 0.9rem; }
+    .alert-error { background: #3a1f1f; border: 1px solid #ff4444; color: #ff6666; }
+    .alert-warning { background: #3a3a1f; border: 1px solid #ffaa00; color: #ffcc00; }
+    .alert-info { background: #1f3a3a; border: 1px solid #00d4ff; color: #00d4ff; }
+    .alert-success { background: #1f3a1f; border: 1px solid #00ff88; color: #00ff88; }
+    
+    /* Status bar */
+    .status-bar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .status-item { background: #16213e; padding: 10px 14px; border-radius: 8px; min-width: 120px; }
+    .status-label { font-size: 0.7rem; color: #888; }
+    .status-value { font-size: 1.1rem; font-weight: bold; }
+    .status-value.running { color: #00ff88; }
+    .status-value.halted { color: #ff4444; }
+    .status-value.ok { color: #00ff88; }
+    .status-value.warn { color: #ffaa00; }
+    
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; background: #16213e; border-radius: 8px; overflow: hidden; margin-bottom: 15px; font-size: 0.8rem; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #2a2a4e; }
+    th { background: #1f1f3a; color: #00d4ff; font-weight: 600; font-size: 0.75rem; }
+    tr:hover { background: #1f1f3a; }
+    .mono { font-family: monospace; font-size: 0.7rem; }
+    
+    /* Source tags */
+    .source-tag { font-size: 0.65rem; padding: 2px 5px; border-radius: 3px; }
+    .source-bot { background: #2a2a4e; color: #00d4ff; }
+    .source-exchange { background: #2a3a2a; color: #00ff88; }
+    .source-derived { background: #3a3a2a; color: #ffaa00; }
+    
+    /* Mismatch */
+    .mismatch { color: #ff4444; font-weight: bold; }
+    .ok { color: #00ff88; }
+    .pending { color: #ffaa00; }
+    
+    /* Panel */
+    .panel { background: #16213e; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .panel-title { color: #00d4ff; font-weight: 600; font-size: 0.95rem; }
+    .refresh-btn { background: #2a2a4e; color: #00d4ff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+    .refresh-btn:hover { background: #3a3a5e; }
+    .pager { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 8px; color: #aaa; font-size: 0.75rem; }
+    .pager-btn { background: #2a2a4e; color: #eee; border: 1px solid #3a3a5e; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+    .pager-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+    
+    .last-update { text-align: center; color: #666; font-size: 0.75rem; margin-top: 15px; }
+    
+    /* Events */
+    .event-row { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid #2a2a4e; font-size: 0.75rem; }
+    .event-type { font-weight: bold; min-width: 80px; }
+    .event-type.SUBMIT { color: #00d4ff; }
+    .event-type.FILLED { color: #00ff88; }
+    .event-type.CANCELED { color: #ffaa00; }
+    .event-type.HALT { color: #ff4444; }
+    .event-ts { color: #666; min-width: 140px; }
+    .verdict-grid { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)); gap: 10px; }
+    .verdict-item { background: #1f1f3a; border-radius: 6px; padding: 10px; }
+    .verdict-label { font-size: 0.68rem; color: #8fa2c2; margin-bottom: 4px; }
+    .verdict-value { font-size: 0.95rem; font-weight: 700; }
+    @media (max-width: 1200px) { .verdict-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 Polymarket Bot Dashboard</h1>
+    
+    <!-- ALERTS PANEL -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">⚠️ System Alerts</span>
+        <button class="refresh-btn" onclick="refresh()">↻</button>
+      </div>
+      <div id="alerts-container">
+        <div class="alert alert-success">All systems operational</div>
+      </div>
+    </div>
+
+    <!-- RUN VERDICT PANEL -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">🧭 Run Verdict</span>
+        <button class="refresh-btn" onclick="refresh()">↻</button>
+      </div>
+      <div class="verdict-grid">
+        <div class="verdict-item">
+          <div class="verdict-label">Real Fill</div>
+          <div class="verdict-value" id="verdict-real-fill">-</div>
+        </div>
+        <div class="verdict-item">
+          <div class="verdict-label">Exposure Match</div>
+          <div class="verdict-value" id="verdict-match">-</div>
+        </div>
+        <div class="verdict-item">
+          <div class="verdict-label">Consistency</div>
+          <div class="verdict-value" id="verdict-consistency">-</div>
+        </div>
+        <div class="verdict-item">
+          <div class="verdict-label">Suggested Action</div>
+          <div class="verdict-value" id="verdict-action">-</div>
+        </div>
+        <div class="verdict-item">
+          <div class="verdict-label">Updated</div>
+          <div class="verdict-value" id="verdict-ts">-</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- STATUS BAR -->
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-label">Bot Status</div>
+        <div class="status-value" id="bot-status">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Mode</div>
+        <div class="status-value" id="bot-mode">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Bot Cash</div>
+        <div class="status-value" id="bot-cash">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Exchange Balance</div>
+        <div class="status-value" id="exchange-balance">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Exch Orders</div>
+        <div class="status-value" id="exchange-orders">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Exch Positions</div>
+        <div class="status-value" id="exchange-positions">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Unresolved</div>
+        <div class="status-value" id="unresolved-count">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Claimable</div>
+        <div class="status-value" id="claimable-count">-</div>
+      </div>
+    </div>
+    
+    <div class="grid">
+      <!-- ORDERS PANEL -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">📋 Orders / Lifecycle</span>
+          <button class="refresh-btn" onclick="refresh()">↻</button>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Src</th><th>Client ID</th><th>Side</th><th>Size</th><th>Filled</th><th>Status</th></tr>
+          </thead>
+          <tbody id="orders-body">
+            <tr><td colspan="6" style="text-align:center">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- POSITION RECONCILIATION PANEL -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">⚖️ Position Reconciliation</span>
+          <button class="refresh-btn" onclick="refresh()">↻</button>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Asset</th><th>Outcome</th><th>Bot Qty</th><th>Exch Qty</th><th>Diff</th><th>Flag</th></tr>
+          </thead>
+          <tbody id="positions-body">
+            <tr><td colspan="6" style="text-align:center">Loading...</td></tr>
+          </tbody>
+        </table>
+        <div class="pager">
+          <button id="positions-prev" class="pager-btn" onclick="changePositionsPage(-1)">Prev</button>
+          <span id="positions-page-info">Page 1 / 1 · Total 0</span>
+          <button id="positions-next" class="pager-btn" onclick="changePositionsPage(1)">Next</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- HEALTH PANEL -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">💚 Health & Reconciliation</span>
+        <button class="refresh-btn" onclick="refresh()">↻</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Metric</th><th>Value</th><th>Source</th></tr>
+        </thead>
+        <tbody id="health-body">
+          <tr><td colspan="3" style="text-align:center">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- CLAIMS PANEL -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">💰 Claimable Markets</span>
+        <button class="refresh-btn" onclick="refresh()">↻</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Market ID</th><th>Question</th><th>Resolved</th><th>Winner</th></tr>
+        </thead>
+        <tbody id="claims-body">
+          <tr><td colspan="4" style="text-align:center;color:#888">No claimable markets</td></tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- EVENTS PANEL -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">� events</span>
+        <button class="refresh-btn" onclick="refresh()">↻</button>
+      </div>
+      <div id="events-container">
+        <p style="color:#888">Loading...</p>
+      </div>
+    </div>
+    
+    <div class="last-update">Last updated: <span id="last-update">-</span></div>
+  </div>
+  
+  <script>
+    const API_BASE = 'http://localhost:3456';
+    let refreshInFlight = false;
+    const positionsPager = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
+    
+    async function fetchJson(url, timeoutMs = 12000) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(API_BASE + url, { signal: controller.signal });
+        if (!res.ok) throw new Error(`http_${res.status}`);
+        return await res.json();
+      } catch (e) {
+        console.error('Fetch error:', url, e);
+        return null;
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    
+    function fmt(n) {
+      if (n === null || n === undefined) return '-';
+      return typeof n === 'number' ? n.toLocaleString(undefined, {maximumFractionDigits:4}) : n;
+    }
+    
+    function trunc(str, len=12) {
+      return str ? (str.length>len ? str.slice(0,len)+'...' : str) : '-';
+    }
+    
+    // RENDER ALERTS (sync version)
+    function renderAlerts(overview, health, positions, claims) {
+      const alerts = [];
+      
+      // BOT_HALTED
+      if (overview.halted) {
+        alerts.push({type:'error', text:`🚨 BOT_HALTED: ${overview.halt_reason||'unknown'}`});
+      }
+      
+      // EXCHANGE_CONNECTIVITY_ERROR
+      if (health?.exchange_connectivity && health.exchange_connectivity !== 'ok') {
+        alerts.push({type:'error', text:`🚨 EXCHANGE_CONNECTIVITY_ERROR: ${health?.exchange_error||'cannot reach'}`});
+      }
+      
+      // POSITION_MISMATCH - only count real mismatches (both bot and exchange have positions but differ)
+      const realMismatches = (positions||[]).filter(p => {
+        const isExchangeOnly = p.bot_qty === 0 && p.exchange_qty > 0;
+        const isBotOnly = p.bot_qty > 0 && p.exchange_qty === 0;
+        const isRealMismatch = p.bot_qty !== 0 && p.exchange_qty !== 0 && Math.abs(p.diff) > 0.001;
+        return isRealMismatch;
+      });
+      if (realMismatches.length > 0) {
+        alerts.push({type:'error', text:`🚨 POSITION_MISMATCH: ${realMismatches.length} position(s) differ`});
+      }
+      
+      // Historical positions info
+      const exchangeOnly = (positions||[]).filter(p => p.bot_qty === 0 && p.exchange_qty > 0);
+      if (exchangeOnly.length > 0 && realMismatches.length === 0) {
+        alerts.push({type:'info', text:`📜 ${exchangeOnly.length} historical position(s) on exchange (not tracked by bot)`});
+      }
+      
+      // ORDER_LIFECYCLE_STUCK
+      if (health?.unresolved_orders > 0) {
+        alerts.push({type:'warning', text:`⚠️ ORDER_LIFECYCLE_STUCK: ${health.unresolved_orders} unresolved`});
+      }
+      
+      // CLAIMABLE_FUNDS_AVAILABLE
+      if (claims?.length > 0) {
+        alerts.push({type:'info', text:`💰 CLAIMABLE_FUNDS_AVAILABLE: ${claims.length} market(s)`});
+      }
+      
+      const html = alerts.length > 0
+        ? alerts.map(a => `<div class="alert alert-${a.type}">${a.text}</div>`).join('')
+        : '<div class="alert alert-success">✅ All systems operational</div>';
+      
+      document.getElementById('alerts-container').innerHTML = html;
+    }
+
+    function changePositionsPage(delta) {
+      const next = positionsPager.page + delta;
+      if (next < 1 || next > positionsPager.totalPages) return;
+      positionsPager.page = next;
+      refresh();
+    }
+    
+    async function refresh() {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
+      document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+      try {
+        const positionsPath = `/api/positions?page=${positionsPager.page}&pageSize=${positionsPager.pageSize}`;
+        const [overview, orders, positionsResp, health, verdict, claims, events] = await Promise.all([
+          fetchJson('/api/overview'), fetchJson('/api/orders'), fetchJson(positionsPath),
+          fetchJson('/api/health'), fetchJson('/api/verdict'), fetchJson('/api/claims'), fetchJson('/api/events')
+        ]);
+        
+        if (!overview) return;
+
+        let positions = [];
+        if (Array.isArray(positionsResp)) {
+          positions = positionsResp;
+          positionsPager.page = 1;
+          positionsPager.total = positions.length;
+          positionsPager.totalPages = 1;
+        } else {
+          positions = Array.isArray(positionsResp?.items) ? positionsResp.items : [];
+          positionsPager.total = Number(positionsResp?.total || positions.length || 0);
+          positionsPager.totalPages = Math.max(1, Number(positionsResp?.total_pages || 1));
+          positionsPager.page = Math.min(Math.max(1, Number(positionsResp?.page || positionsPager.page)), positionsPager.totalPages);
+        }
+
+        if (positions.length === 0 && positionsPager.total > 0 && positionsPager.page > 1) {
+          positionsPager.page = positionsPager.totalPages;
+          refreshInFlight = false;
+          refresh();
+          return;
+        }
+
+        const pageInfo = document.getElementById('positions-page-info');
+        const prevBtn = document.getElementById('positions-prev');
+        const nextBtn = document.getElementById('positions-next');
+        if (pageInfo) {
+          pageInfo.textContent = `Page ${positionsPager.page} / ${positionsPager.totalPages} · Total ${positionsPager.total}`;
+        }
+        if (prevBtn) prevBtn.disabled = positionsPager.page <= 1;
+        if (nextBtn) nextBtn.disabled = positionsPager.page >= positionsPager.totalPages;
+
+        const verdictRealFill = verdict?.verdict?.real_fill;
+        const verdictMatch = verdict?.verdict?.exposure_match_status || '-';
+        const verdictConsistency = verdict?.verdict?.consistency_status || overview?.run_verdict_consistency || '-';
+        const verdictAction = verdict?.verdict?.action || overview?.run_verdict_action || '-';
+        const verdictTs = verdict?.ts ? new Date(verdict.ts).toLocaleString() : '-';
+        const verdictFillText = verdictRealFill === true ? '✅ TRUE' : (verdictRealFill === false ? '❌ FALSE' : (overview?.run_verdict_real_fill === true ? '✅ TRUE' : '-'));
+        const verdictActionClass = verdictAction === 'HALT' ? 'mismatch' : (verdictAction === 'WATCH' ? 'pending' : (verdictAction === 'CONTINUE' ? 'ok' : ''));
+        const verdictMatchClass = verdictMatch === 'MISMATCH' ? 'mismatch' : (verdictMatch === 'MATCHED' ? 'ok' : 'pending');
+        const verdictConsistencyClass = verdictConsistency === 'CONFLICT' ? 'mismatch' : (verdictConsistency === 'CONSISTENT' ? 'ok' : 'pending');
+
+        document.getElementById('verdict-real-fill').textContent = verdictFillText;
+        document.getElementById('verdict-match').textContent = verdictMatch;
+        document.getElementById('verdict-consistency').textContent = verdictConsistency;
+        document.getElementById('verdict-action').textContent = verdictAction;
+        document.getElementById('verdict-ts').textContent = verdictTs;
+        document.getElementById('verdict-match').className = `verdict-value ${verdictMatchClass}`;
+        document.getElementById('verdict-consistency').className = `verdict-value ${verdictConsistencyClass}`;
+        document.getElementById('verdict-action').className = `verdict-value ${verdictActionClass}`;
+        
+        // Status bar
+        const st = document.getElementById('bot-status');
+        st.textContent = overview.bot_status || 'unknown';
+        st.className = 'status-value ' + (overview.bot_status==='halted'?'halted':'running');
+        
+        document.getElementById('bot-mode').textContent = overview.mode || '-';
+        document.getElementById('bot-cash').textContent = fmt(overview.bot_cash);
+        
+        // Exchange balance - already normalized (USDC)
+        const bal = overview.exchange_balance ? overview.exchange_balance.toFixed(4) : '-';
+        document.getElementById('exchange-balance').textContent = bal + ' USDC';
+        document.getElementById('exchange-orders').textContent = overview.exchange_open_orders || 0;
+        document.getElementById('exchange-positions').textContent = overview.exchange_holdings_count || (positions||[]).length;
+        document.getElementById('unresolved-count').textContent = health?.unresolved_orders || 0;
+        document.getElementById('claimable-count').textContent = overview.claimable_markets_count || 0;
+        
+        // Alerts (sync - claims already fetched)
+        renderAlerts(overview, health, positions, claims);
+        
+        // Orders
+        const ordersBody = document.getElementById('orders-body');
+        if (orders?.length) {
+          ordersBody.innerHTML = orders.map(o => `
+            <tr>
+              <td><span class="source-tag source-${o.source}">${o.source}</span></td>
+              <td class="mono">${trunc(o.client_order_id)}</td>
+              <td>${o.side||'-'}</td>
+              <td>${fmt(o.original_size)}</td>
+              <td>${fmt(o.executed_size)}</td>
+              <td class="${['filled','canceled','partially_filled_canceled'].includes(o.status)?'ok':'pending'}">${o.status||'-'}</td>
+            </tr>`).join('');
+        } else {
+          ordersBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888">No orders</td></tr>';
+        }
+        
+        // Positions (reconciliation)
+        const posBody = document.getElementById('positions-body');
+        if (positions?.length) {
+          posBody.innerHTML = positions.map(p => {
+            const isExchangeOnly = p.bot_qty === 0 && p.exchange_qty > 0;
+            const isBotOnly = p.bot_qty > 0 && p.exchange_qty === 0;
+            const isMismatch = p.bot_qty !== 0 && p.exchange_qty !== 0 && Math.abs(p.diff) > 0.001;
+            
+            let flag = '✅';
+            let flagClass = 'ok';
+            let label = 'OK';
+            
+            if (isExchangeOnly) {
+              flag = '📜';
+              flagClass = 'pending';
+              label = 'History';
+            } else if (isBotOnly) {
+              flag = '⚠️';
+              flagClass = 'pending';
+              label = 'Bot Only';
+            } else if (isMismatch) {
+              flag = '🚨 MISMATCH';
+              flagClass = 'mismatch';
+              label = 'MISMATCH';
+            }
+            
+            return `
+              <tr>
+                <td class="mono">${trunc(p.asset_id||p.market_id,10)}</td>
+                <td>${p.outcome||'-'}</td>
+                <td>${fmt(p.bot_qty)}</td>
+                <td>${fmt(p.exchange_qty)}</td>
+                <td class="${flagClass}">${fmt(p.diff)}</td>
+                <td class="${flagClass}">${flag}</td>
+              </tr>`;
+          }).join('');
+        } else {
+          posBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888">No positions</td></tr>';
+        }
+        
+        // Health
+        const hlth = health || {};
+        document.getElementById('health-body').innerHTML = `
+          <tr><td>Exchange Connectivity</td><td class="${hlth.exchange_connectivity==='ok'?'ok':'mismatch'}">${hlth.exchange_connectivity||'-'}</td><td class="source-tag source-exchange">exchange</td></tr>
+          <tr><td>Reconciliation Status</td><td class="${hlth.reconciliation_status==='ok'?'ok':'pending'}">${hlth.reconciliation_status||'-'}</td><td class="source-tag source-derived">derived</td></tr>
+          <tr><td>Unresolved Orders</td><td class="${hlth.unresolved_orders>0?'pending':'ok'}">${hlth.unresolved_orders||0}</td><td class="source-tag source-bot">bot state</td></tr>
+          <tr><td>Bot Halted</td><td class="${hlth.bot_halted?'mismatch':'ok'}">${hlth.bot_halted?'YES':'NO'}</td><td class="source-tag source-bot">bot state</td></tr>
+          <tr><td>Claimable Markets</td><td>${(claims||[]).length}</td><td class="source-tag source-exchange">exchange</td></tr>
+          <tr><td>Last Update</td><td>${hlth.last_update_ts?new Date(hlth.last_update_ts).toLocaleString():'-'}</td><td class="source-tag source-derived">derived</td></tr>
+        `;
+        
+        // Claims
+        const clBody = document.getElementById('claims-body');
+        if (claims?.length) {
+          clBody.innerHTML = claims.map(c => `
+            <tr>
+              <td class="mono">${trunc(c.market_id)}</td>
+              <td>${trunc(c.question,40)}</td>
+              <td class="${c.resolved?'ok':'pending'}">${c.resolved?'YES':'NO'}</td>
+              <td>${c.winner||'-'}</td>
+            </tr>`).join('');
+        } else {
+          clBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888">No claimable markets</td></tr>';
+        }
+        
+        // Events
+        const evtContainer = document.getElementById('events-container');
+        if (events?.length) {
+          evtContainer.innerHTML = events.slice(-20).reverse().map(e => `
+            <div class="event-row">
+              <span class="event-type ${e.type}">${e.type||'UNKNOWN'}</span>
+              <span class="event-ts">${e.ts?new Date(e.ts).toLocaleString():'-'}</span>
+              <span>${trunc(JSON.stringify(e).slice(0,80),50)}</span>
+            </div>`).join('');
+        } else {
+          evtContainer.innerHTML = '<p style="color:#888">No events</p>';
+        }
+      } finally {
+        refreshInFlight = false;
+      }
+    }
+    
+    refresh();
+    setInterval(refresh, 10000);
+  </script>
+</body>
+</html>
