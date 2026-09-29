@@ -1,115 +1,45 @@
 # Polymarket Bot
 
-这是一个 Polymarket 自动交易与研究项目，包含行情筛选、纸面运行、实盘执行、恢复对账和风险门禁。代码采用 [MIT 许可证](LICENSE)。
+Polymarket Bot 是一套围绕 Polymarket BTC 5 分钟 Up/Down 市场搭建的研究、执行和运行恢复系统。它的核心工作不是制造交易信号，而是把一个候选策略放到真实盘口、实际费用、数据质量和故障恢复面前，决定它有没有资格再往实盘走一步。
 
-本公开仓库从经过清理的源码快照建立，未包含原私有仓库的 Git 历史、真实钱包地址、密钥或运行数据。实盘账户地址必须由操作者在被 Git 忽略的 `.env.live.local` 中自行设置；示例配置见 [`.env.live.template`](.env.live.template)。不要将账户文件、密钥或交易记录提交到 Git。
+从只读采集开始，系统保留市场规则、Chainlink TWAP、真实 bid/ask、挂单量、费用和外部 BTC 行情；再用固定的训练与样本外时间切分做成本后回放。只有外部市场领先性和可成交的净优势都被验证，报告才有资格进入人工复核。回放、paper 和 shadow 把运行链路先跑出来，实盘执行、对账和恢复则留在后面的独立门里。
 
-## AI Workflow Quick Entry
+它是一套可审计的交易工程底座：每一份结论都有 run、原始数据和哈希可追，证据不够时就给出 `NO_GO`，而不是把缺失信息伪装成机会。
 
-- Rules & role boundaries: `AGENTS.md`
-- Workflow loop (Human/Codex/OpenClaw): `AI_ENGINEERING_WORKFLOW.md`
-- Task spec template: `tasks/AAEC-E_TASK_TEMPLATE.md`
-- Long-lived project docs: `docs/PROJECT_CONTEXT.md`, `docs/ARCHITECTURE.md`, `docs/CHANGELOG.md`, `docs/ENGINEERING_LOG.md`
+## 从只读模式开始
 
-## Development Notes
-
-### Recommended Entrypoints (current)
-
-- Live canary (recommended): `bash ops/scripts/run_live_canary_strict_sync.sh`
-- Strict preflight only: `bash ops/scripts/preflight_strict_live.sh`
-- Bridge deposit route check only: `bash ops/scripts/preflight_polymarket_bridge_deposit.sh`
-- Shadow run: `bash ops/scripts/run_shadow_with_proxy.sh`
-- Regression gate wrapper: `bash ops/scripts/run_canary_regression_gate.sh`
-
-> Note: legacy `polymarket_paper_trading_live.mjs` was removed to reduce duplicate entry confusion.
->
-> Guardrail: core runner/recovery/reset `.mjs` now require `RUN_VIA_SH=1` and are intended to be called from `ops/scripts/*.sh` by default.
-
-### CLOB V2 / pUSD runtime
-
-Live execution uses `py-clob-client-v2` and treats `pUSD` as the only CLOB collateral asset. Install the pinned runtime into the dedicated environment:
+先装 Node.js 依赖，再读取少量公开市场数据：
 
 ```bash
-uv pip install --python .venv-clob/bin/python3 -r requirements.live.txt
+npm ci
+npm run pm:readonly:10
 ```
 
-Keep `PRIVATE_KEY`, the three `POLY_CLOB_API_*` values, `POLY_SIGNATURE_TYPE=2`, and `POLY_FUNDER` only in the ignored `.env.live.local`. Use the separate Bridge preflight before manual funding; the strict preflight verifies pUSD balance and allowance. Neither tool transfers, wraps, or approves assets.
+这一步不需要钱包密钥，也不会提交订单。访问市场数据需要本机网络可用；如需代理，按自己的环境设置 `HTTPS_PROXY`。其他只读入口见 `package.json` 中的 `pm:finder`、`pm:tracker` 和策略筛查命令。
 
-### Running in Live Mode
-
-```bash
-# Auto-loads .env.live.local at startup
-node src/runners/polymarket_paper_trading_realtime.mjs --mode live --liveDryRun false ...
-```
-
-### Proxy Configuration
-
-Node.js native `fetch` does NOT respect HTTP_PROXY environment variables.
-
-The project uses native https module with CONNECT tunnel:
-- Set `HTTPS_PROXY=http://127.0.0.1:7890` before running
-- Proxy is automatically used if env var is set
-
-### Common Issues
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `missing_private_key` | .env not loaded | Ensure `.env.live.local` exists at project root and launcher is started via `ops/scripts/*.sh` |
-| `SELECTOR_FETCH_SLUG_ERROR` | Proxy not working | Check HTTPS_PROXY env var |
-
-### Automated end-of-run summary (no-LLM polling)
-
-`run_live_canary_strict_sync.sh` now emits and stores a machine-readable final result without changing trading logic:
-
-- stdout line: `FINAL_RESULT {...}`
-- file: `data/last_run_summary.json`
-- file: `data/run_verdict.json` (Run Verdict Center V1)
-
-Run Verdict V1 fields are grouped by:
-
-- `local` (run 内事件口径)
-- `exchange` (交易所事实口径)
-- `reconcile` (post-reconcile 结果)
-- `verdict` (`real_fill`, `exposure_match_status`, `consistency_status`, `action`)
-
-Dashboard/API:
-
-- `GET /api/verdict` returns `run_verdict.json`
-- `GET /api/overview` includes:
-  - `run_verdict_action`
-  - `run_verdict_real_fill`
-  - `run_verdict_consistency`
-
-Optional notifications:
-
-- macOS local notification via `osascript`
-- Telegram push when env vars are set:
-  - `TELEGRAM_BOT_TOKEN`
-  - `TELEGRAM_CHAT_ID`
-
-### Regression gate usage
-
-Run a baseline canary + automatic pass/fail check:
-
-```bash
-bash ops/scripts/run_canary_regression_gate.sh
-```
-
-Gate switches:
-
-- `REQUIRE_POST_RECONCILE_OK=true|false` (default `true`)
-- `REQUIRE_REAL_FILL=true|false` (default `false`)
-- `LIVE_DRY_RUN` default is now `true` (safe default)
-- To allow real orders in regression gate, **must** set `REGRESSION_ALLOW_LIVE=true` explicitly
-
-### Run Verdict V1 offline acceptance (no live orders)
+想先看系统如何判断一次运行结果，可以执行离线验收脚本：
 
 ```bash
 bash ops/scripts/run_verdict_center_v1_acceptance.sh
 ```
 
-What it validates:
+它使用固定样例检查结论生成和 Dashboard API，不会发送真实订单。
 
-- Exchange fill + local no fill -> `real_fill=true`, `consistency=DELAYED_BACKFILL`
-- `unconfirmed_recovered_holdings` -> `action=HALT`
-- `/api/verdict` and `/api/overview` verdict fields stay consistent
+## 从研究走到执行
+
+- **看市场：**采集数据，检查报价是不是够新、费用有没有吃掉空间、样本有没有意义，再产出可复核的报告。
+- **先演一遍：**回放、paper 和 shadow 让信号和拟议订单先在不动真钱的环境里跑起来。
+- **再碰实盘：**配置、账户身份、余额、持仓、订单和恢复状态都要过自己的门。
+- **跑完对账：**把本地事件和交易所事实放在一起核对，结论写入 `data/run_verdict.json`。状态说不清时，系统宁可停下来。
+
+架构细节在 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，当前运行状态以根目录 [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md) 为准。负责运行器和门禁的脚本集中在 [`ops/scripts/`](ops/scripts/)。请先读 [`AGENTS.md`](AGENTS.md) 中的安全边界，再接触这些脚本。
+
+## 实盘前
+
+公开仓库来自清理过的源码快照，不带原私有仓库历史、真实钱包地址、密钥或运行数据。`.env.live.template` 只是配置说明；账户信息放在被 Git 忽略的 `.env.live.local`。
+
+实盘路径会发送真实订单。开始前，把策略证据、账户状态、preflight 和人工批准都走完；README 里的只读示例只适合用来认识系统。
+
+## 许可
+
+代码采用 [MIT 许可证](LICENSE)。
